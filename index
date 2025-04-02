@@ -1,223 +1,292 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <title>乡村周末经济热力图</title>
-    <style>
-        #map-container {
-            width: 100%;
-            height: 600px;
-        }
-        .control-panel {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-            background: rgba(255,255,255,0.8);
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.2);
-        }
-        .toggle-btn {
-            display: block;
-            margin: 5px 0;
-            padding: 8px 12px;
-            background: #3498db;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .toggle-btn.active {
-            background: #e74c3c;
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>中国城市人口与经济数据</title>
+
+  <style>
+    html, body {
+      padding: 0;
+      margin: 0;
+      height: 100%;
+      width: 100%;
+      font-family: 'Microsoft YaHei', sans-serif;
+    }
+    
+    #header {
+      height: 80px;
+      background: #3f51b5;
+      color: white;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    #container {
+      display: flex;
+      height: calc(100vh - 80px);
+    }
+    
+    #mapView {
+      flex: 3;
+      position: relative;
+    }
+    
+    #sidebar {
+      flex: 1;
+      background: #f5f5f5;
+      padding: 15px;
+      overflow-y: auto;
+      box-shadow: -2px 0 4px rgba(0,0,0,0.1);
+    }
+    
+    .title {
+      font-size: 24px;
+      font-weight: bold;
+    }
+    
+    .subtitle {
+      font-size: 14px;
+      opacity: 0.8;
+    }
+    
+    .widget-container {
+      margin-bottom: 15px;
+      background: white;
+      padding: 10px;
+      border-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .widget-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #3f51b5;
+    }
+    
+    /* 人口规模图例 */
+    .population-legend {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+    }
+    .legend-color {
+      width: 20px;
+      height: 20px;
+      margin-right: 8px;
+      border-radius: 50%;
+    }
+  </style>
+
+  <!-- ArcGIS API for JavaScript -->
+  <link rel="stylesheet" href="https://js.arcgis.com/4.28/esri/themes/light/main.css">
+  <script src="https://js.arcgis.com/4.28/"></script>
 </head>
+
 <body>
-    <div id="map-container"></div>
-    <div class="control-panel">
-        <h3>数据模式</h3>
-        <button class="toggle-btn active" onclick="loadData('weekend')">周末数据</button>
-        <button class="toggle-btn" onclick="loadData('weekday')">工作日数据</button>
-        
-        <h3 style="margin-top:15px;">天气模拟</h3>
-        <button class="toggle-btn" onclick="setWeather('sunny')">晴天模式</button>
-        <button class="toggle-btn" onclick="setWeather('rainy')">雨天模式</button>
-        
-        <div id="info-box" style="margin-top:15px; padding:8px; background:#f1f1f1; border-radius:4px;">
-            点击地图查看详细数据
-        </div>
+  <div id="header">
+    <div>
+      <div class="title">中国城市人口与经济数据</div>
+      <div class="subtitle">基于2023年统计数据</div>
     </div>
+    <div id="searchWidget"></div>
+  </div>
+  
+  <div id="container">
+    <div id="mapView"></div>
+    <div id="sidebar">
+      <div class="widget-container">
+        <div class="widget-title">底图切换</div>
+        <div id="basemapGallery"></div>
+      </div>
+      <div class="widget-container">
+        <div class="widget-title">数据图层</div>
+        <div id="layerList"></div>
+      </div>
+      <div class="widget-container">
+        <div class="widget-title">人口规模图例</div>
+        <div id="legend"></div>
+        <div class="population-legend">
+          <div class="legend-item">
+            <div class="legend-color" style="background-color: #ffeda0;"></div>
+            <span>100万以下</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background-color: #feb24c;"></div>
+            <span>100-500万</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background-color: #f03b20;"></div>
+            <span>500万以上</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-    <!-- 引入百度地图API -->
-    <script type="text/javascript" src="https://api.map.baidu.com/api?v=3.0&ak=KPCF0tP1YL0jiu4s5x9TERoS7htuOM6a"></script>
-    <!-- 引入热力图插件 -->
-    <script type="text/javascript" src="https://api.map.baidu.com/library/Heatmap/2.0/src/Heatmap_min.js"></script>
-   
-    <script>
-        // 初始化地图
-        const map = new BMap.Map("map-container");
-        map.centerAndZoom(new BMap.Point(118.7969, 31.9204), 14); // 中心点坐标和缩放级别
-        map.enableScrollWheelZoom();
-        
-        // 添加地图控件
-        map.addControl(new BMap.NavigationControl());
-        map.addControl(new BMap.ScaleControl());
-
-        // 初始化热力图
-        const heatmapOverlay = new BMapLib.HeatmapOverlay({
-            radius: 25,
-            visible: true,
-            gradient: {
-                0: 'blue',     // 低密度
-                0.5: 'yellow', // 中密度
-                1: 'red'       // 高密度
-            }
-        });
-        map.addOverlay(heatmapOverlay);
-
-        // 模拟数据源
-        const dataSources = {
-            weekend: {
-                sunny: generateHeatData(150, 300), // 晴天周末数据（高密度）
-                rainy: generateHeatData(50, 150)   // 雨天周末数据
+  <script>
+    require([
+      "esri/Map",
+      "esri/views/MapView",
+      "esri/layers/FeatureLayer",
+      "esri/widgets/ScaleBar",
+      "esri/widgets/Legend",
+      "esri/widgets/Search",
+      "esri/widgets/LayerList",
+      "esri/widgets/BasemapGallery",
+      "esri/renderers/SimpleRenderer",
+      "esri/symbols/SimpleMarkerSymbol",
+      "esri/symbols/TextSymbol",
+      "esri/Graphic"
+    ], function(
+      Map, MapView, FeatureLayer, ScaleBar, Legend,
+      Search, LayerList, BasemapGallery, SimpleRenderer,
+      SimpleMarkerSymbol, TextSymbol, Graphic
+    ) {
+      
+      // 创建地图
+      const map = new Map({
+        basemap: "streets-navigation-vector"
+      });
+      
+      // 添加中国主要城市图层 - 使用可靠的公共数据源
+      const citiesLayer = new FeatureLayer({
+        url: "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/World_Cities/FeatureServer/0",
+        definitionExpression: "CNTRY_NAME = 'China'", // 只显示中国城市
+        title: "中国主要城市",
+        outFields: ["*"],
+        popupTemplate: {
+          title: "{CITY_NAME}",
+          content: [{
+            type: "fields",
+            fieldInfos: [
+              { fieldName: "POP", label: "人口", format: { digitSeparator: true } },
+              { fieldName: "GDP_MD_EST", label: "GDP(百万美元)", format: { digitSeparator: true } },
+              { fieldName: "CITY_LAT", label: "纬度" },
+              { fieldName: "CITY_LNG", label: "经度" }
+            ]
+          }]
+        },
+        renderer: new SimpleRenderer({
+          symbol: new SimpleMarkerSymbol({
+            color: [226, 119, 40, 0.8],
+            outline: {
+              color: [255, 255, 255, 0.7],
+              width: 1
             },
-            weekday: {
-                sunny: generateHeatData(30, 80),    // 晴天工作日数据
-                rainy: generateHeatData(10, 40)     // 雨天工作日数据
-            }
-        };
-
-        // 当前显示模式
-        let currentMode = 'weekend';
-        let currentWeather = 'sunny';
-
-        // 初始加载数据
-        loadData(currentMode);
-
-        // 生成模拟热力数据
-        function generateHeatData(min, max) {
-            const points = [];
-            // 主聚集区（佘村核心区）
-            for (let i = 0; i < 30; i++) {
-                points.push({
-                    lng: 118.7969 + (Math.random() * 0.02 - 0.01),
-                    lat: 31.9204 + (Math.random() * 0.01 - 0.005),
-                    count: Math.floor(Math.random() * (max - min)) + min
-                });
-            }
-            // 次要聚集区（周边村落）
-            for (let i = 0; i < 15; i++) {
-                points.push({
-                    lng: 118.78 + Math.random() * 0.03,
-                    lat: 31.915 + Math.random() * 0.02,
-                    count: Math.floor(Math.random() * (max/2 - min/3)) + min/3
-                });
-            }
-            return points;
-        }
-
-        // 加载数据
-        function loadData(mode) {
-            currentMode = mode;
-            const data = dataSources[mode][currentWeather];
-            
-            // 更新热力图
-            heatmapOverlay.setDataSet({
-                data: data,
-                max: 300
+            size: 8
+          }),
+          visualVariables: [{
+            type: "size",
+            field: "POP",
+            stops: [
+              { value: 100000, size: 6 },
+              { value: 5000000, size: 20 }
+            ]
+          }, {
+            type: "color",
+            field: "POP",
+            stops: [
+              { value: 0, color: "#ffeda0" },
+              { value: 1000000, color: "#feb24c" },
+              { value: 5000000, color: "#f03b20" }
+            ]
+          }]
+        })
+      });
+      
+      map.add(citiesLayer);
+      
+      // 创建视图
+      const view = new MapView({
+        container: "mapView",
+        map: map,
+        center: [104.1954, 35.8617], // 中国中心
+        zoom: 5
+      });
+      
+      // 添加比例尺
+      const scaleBar = new ScaleBar({
+        view: view,
+        unit: "metric"
+      });
+      view.ui.add(scaleBar, {
+        position: "bottom-left"
+      });
+      
+      // 添加图例
+      const legend = new Legend({
+        view: view,
+        container: "legend"
+      });
+      
+      // 添加搜索框
+      const searchWidget = new Search({
+        view: view,
+        container: "searchWidget",
+        sources: [{
+          layer: citiesLayer,
+          searchFields: ["CITY_NAME"],
+          displayField: "CITY_NAME",
+          exactMatch: false,
+          outFields: ["*"],
+          placeholder: "搜索城市名称",
+          name: "中国城市"
+        }]
+      });
+      
+      // 添加图层列表
+      const layerList = new LayerList({
+        view: view,
+        container: "layerList"
+      });
+      
+      // 添加底图库
+      const basemapGallery = new BasemapGallery({
+        view: view,
+        container: "basemapGallery"
+      });
+      
+      // 地图加载完成后添加一些标注
+      view.whenLayerView(citiesLayer).then(function(layerView) {
+        // 为特大城市添加标签
+        const query = citiesLayer.createQuery();
+        query.where = "POP > 5000000";
+        query.outFields = ["CITY_NAME", "POP"];
+        citiesLayer.queryFeatures(query).then(function(results) {
+          results.features.forEach(function(city) {
+            const attributes = city.attributes;
+            const textSymbol = new TextSymbol({
+              color: "#333333",
+              text: attributes.CITY_NAME,
+              font: {
+                size: 10,
+                family: "Microsoft YaHei",
+                weight: "bold"
+              },
+              haloColor: [255, 255, 255, 0.7],
+              haloSize: 1,
+              yoffset: -15
             });
             
-            // 更新按钮状态
-            document.querySelectorAll('.toggle-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            event.target.classList.add('active');
-            
-            // 显示对比信息
-            updateInfoBox();
-        }
-
-        // 设置天气模式
-        function setWeather(weather) {
-            currentWeather = weather;
-            loadData(currentMode);
-            
-            // 更新按钮状态
-            document.querySelectorAll('.toggle-btn').forEach(btn => {
-                if (btn.textContent.includes(weather === 'sunny' ? '晴天' : '雨天')) {
-                    btn.classList.add('active');
-                } else {
-                    btn.classList.remove('active');
-                }
-            });
-        }
-
-        // 更新信息框
-        function updateInfoBox() {
-            const weekendSunny = calcStats(dataSources.weekend.sunny);
-            const weekendRainy = calcStats(dataSources.weekend.rainy);
-            const weekdaySunny = calcStats(dataSources.weekday.sunny);
-            
-            let html = `
-                <strong>当前模式：${currentMode === 'weekend' ? '周末' : '工作日'} | ${currentWeather === 'sunny' ? '晴天' : '雨天'}</strong><br>
-                <hr style="margin:5px 0;">
-                数据对比：<br>
-                • 周末晴天峰值: ${weekendSunny.max}人<br>
-                • 周末雨天峰值: ${weekendRainy.max}人<br>
-                • 工作日晴天峰值: ${weekdaySunny.max}人<br>
-                <span style="color:${weekendSunny.max/weekdaySunny.max > 2 ? '#e74c3c' : '#27ae60'}">
-                周末客流是工作日的${(weekendSunny.max/weekdaySunny.max).toFixed(1)}倍
-                </span>
-            `;
-            
-            document.getElementById('info-box').innerHTML = html;
-        }
-
-        // 计算数据统计
-        function calcStats(data) {
-            let max = 0;
-            let total = 0;
-            
-            data.forEach(point => {
-                if (point.count > max) max = point.count;
-                total += point.count;
+            const point = city.geometry;
+            const textGraphic = new Graphic({
+              geometry: point,
+              symbol: textSymbol
             });
             
-            return {
-                max: max,
-                avg: Math.round(total/data.length)
-            };
-        }
-
-        // 添加点击交互
-        map.addEventListener('click', function(e) {
-            const infoWindow = new BMap.InfoWindow(`
-                <div style="padding:5px;">
-                    <h4>位置详情</h4>
-                    <p>经度: ${e.point.lng.toFixed(4)}</p>
-                    <p>纬度: ${e.point.lat.toFixed(4)}</p>
-                    <p>预估人流量: ${getSimulatedCount(e.point)}人</p>
-                </div>
-            `);
-            map.openInfoWindow(infoWindow, e.point);
+            view.graphics.add(textGraphic);
+          });
         });
-
-        // 模拟点击位置的人流量
-        function getSimulatedCount(point) {
-            // 计算与中心点的距离
-            const centerDist = Math.sqrt(
-                Math.pow(point.lng - 118.7969, 2) + 
-                Math.pow(point.lat - 31.9204, 2)
-            );
-            
-            // 基于距离和当前模式计算模拟值
-            const baseValue = currentMode === 'weekend' ? 
-                (currentWeather === 'sunny' ? 200 : 100) :
-                (currentWeather === 'sunny' ? 60 : 30);
-                
-            return Math.round(baseValue * (1 - centerDist * 50));
-        }
-    </script>
+      });
+    });
+  </script>
 </body>
 </html>
